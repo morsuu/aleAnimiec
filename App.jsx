@@ -56,7 +56,7 @@ function App() {
 
   const handleLogin = () => {
     const CLIENT_ID = "1464662587466580234"; 
-    const REDIRECT_URI = encodeURIComponent("http://localhost:5173/");
+    const REDIRECT_URI = encodeURIComponent("https://aleanimiec.vercel.app/");
     window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify`;
   };
 
