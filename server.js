@@ -6,14 +6,13 @@ import cors from 'cors';
 import { Client, GatewayIntentBits, WebhookClient } from 'discord.js';
 import axios from 'axios';
 
-// --- DANE Z PLIKU .ENV (LUB RENDER ENVIRONMENT) ---
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin"; // Hasło z .env
 
-// Domyślny fallback (dla bezpieczeństwa)
 const DEFAULT_REDIRECT_URI = "https://aleanimiec.vercel.app/";
 
 const webhookClient = new WebhookClient({ url: WEBHOOK_URL });
@@ -27,13 +26,10 @@ const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// --- ENDPOINT DO LOGOWANIA OAUTH2 ---
+// --- AUTH ---
 app.post('/api/auth/discord', async (req, res) => {
-  // ODBIERAMY 'redirect_uri' Z FRONTENDU!
   const { code, redirect_uri } = req.body;
-  
   if (!code) return res.status(400).send('Brak kodu');
-
   try {
     const tokenResponse = await axios.post(
       'https://discord.com/api/oauth2/token',
@@ -42,71 +38,105 @@ app.post('/api/auth/discord', async (req, res) => {
         client_secret: CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        // Używamy tego co przysłał frontend, żeby pasowało do tego, gdzie był użytkownik
         redirect_uri: redirect_uri || DEFAULT_REDIRECT_URI,
       }).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
-
     const { access_token } = tokenResponse.data;
-
     const userResponse = await axios.get('https://discord.com/api/users/@me', {
       headers: { Authorization: `Bearer ${access_token}` },
     });
-
     res.json(userResponse.data);
-
   } catch (error) {
-    console.error('Błąd logowania Discord:', error.response?.data || error.message);
-    // Zwracamy szczegóły błędu do frontendu
-    res.status(500).json({ error: error.response?.data?.error_description || 'Błąd autoryzacji' });
+    console.error('Błąd logowania:', error.message);
+    res.status(500).json({ error: 'Błąd autoryzacji' });
   }
 });
 
-// --- BOT DISCORD ---
+// --- BOT ---
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
-
-client.once('ready', () => { console.log(`✅ Bot Discorda gotowy: ${client.user.tag}`); });
-
+client.once('ready', () => { console.log(`✅ Bot gotowy`); });
 client.on('messageCreate', (message) => {
   if (message.author.bot) return;
-
   if (message.channel.id === DISCORD_CHANNEL_ID) {
-    const msgData = {
+    io.emit('receive_message', {
       user: message.author.username,
       avatar: message.author.displayAvatarURL(),
       text: message.content,
       fromDiscord: true
-    };
-    io.emit('receive_message', msgData);
+    });
   }
 });
-
 client.login(DISCORD_TOKEN);
 
-// --- SOCKET.IO ---
-let roomState = { currentUrl: null, isPlaying: false, currentTime: 0, lastUpdated: Date.now() };
+// --- SOCKET LOGIC ---
+let roomState = { currentUrl: null, isPlaying: false, currentTime: 0 };
 
 io.on('connection', (socket) => {
+  // Domyślnie użytkownik NIE JEST adminem
+  socket.isAdmin = false;
+  // Zmienna do anty-spamu (ostatnia wiadomość)
+  socket.lastMessageTime = 0;
+
   socket.emit('sync_state', roomState);
 
-  socket.on('admin_change_url', (url) => { roomState.currentUrl = url; roomState.isPlaying = true; io.emit('sync_url', url); });
-  socket.on('admin_play', (time) => { roomState.isPlaying = true; io.emit('sync_play', time); });
-  socket.on('admin_pause', (time) => { roomState.isPlaying = false; io.emit('sync_pause', time); });
-  socket.on('admin_seek', (time) => { io.emit('sync_seek', time); });
+  // Logowanie na admina przez specjalne zdarzenie
+  socket.on('auth_admin', (password) => {
+    if (password === ADMIN_PASSWORD) {
+      socket.isAdmin = true;
+      socket.emit('admin_success', true); // Potwierdzenie dla klienta
+    } else {
+      socket.emit('admin_success', false);
+    }
+  });
 
+  // --- FUNKCJE TYLKO DLA ADMINA ---
+  // Dodajemy "if (!socket.isAdmin) return;" do każdej ważnej funkcji
+  
+  socket.on('admin_change_url', (url) => {
+    if (!socket.isAdmin) return; 
+    roomState.currentUrl = url; 
+    roomState.isPlaying = true; 
+    io.emit('sync_url', url);
+  });
+
+  socket.on('admin_play', (time) => {
+    if (!socket.isAdmin) return;
+    roomState.isPlaying = true; 
+    io.emit('sync_play', time);
+  });
+
+  socket.on('admin_pause', (time) => {
+    if (!socket.isAdmin) return;
+    roomState.isPlaying = false; 
+    io.emit('sync_pause', time);
+  });
+
+  socket.on('admin_seek', (time) => {
+    if (!socket.isAdmin) return;
+    io.emit('sync_seek', time);
+  });
+
+  // --- CZAT (Z ANTY-SPAMEM) ---
   socket.on('chat_message', async (msg) => {
+    // 1. Sprawdź długość wiadomości (max 500 znaków)
+    if (!msg.text || msg.text.length > 500) return;
+
+    // 2. Anty-spam (max 1 wiadomość na sekundę)
+    const now = Date.now();
+    if (now - socket.lastMessageTime < 1000) return; 
+    socket.lastMessageTime = now;
+
     try {
       await webhookClient.send({
         content: msg.text,
         username: msg.user,
         avatarURL: msg.avatar || "https://cdn.discordapp.com/embed/avatars/0.png"
       });
-    } catch (e) {
-      console.error("Błąd Webhooka:", e);
-    }
+    } catch (e) { console.error("Błąd Webhooka:", e); }
+    
     io.emit('receive_message', { ...msg, fromDiscord: false });
   });
 });
