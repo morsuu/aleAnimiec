@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
-// Upewnij się, że ten adres NIE MA ukośnika na końcu!
+// Upewnij się, że adres NIE MA ukośnika na końcu
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
@@ -31,10 +31,7 @@ function App() {
         body: JSON.stringify({ code, redirect_uri: window.location.origin + "/" })
       })
       .then(res => { 
-        if(!res.ok) {
-           // Jeśli błąd, logujemy go w konsoli, ale nie wyświetlamy brzydkiego alertu HTML
-           return res.text().then(text => { console.error("Błąd backendu:", text); throw new Error(res.statusText) });
-        } 
+        if(!res.ok) return res.text().then(text => { throw new Error(text) });
         return res.json(); 
       })
       .then(userData => {
@@ -54,6 +51,7 @@ function App() {
   }, []);
 
   const handleLogin = () => {
+    // PODMIEŃ NA SWÓJ KLIENT ID
     const CLIENT_ID = "1464662587466580234"; 
     const REDIRECT_URI = encodeURIComponent(window.location.origin + "/");
     window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify`;
@@ -81,7 +79,7 @@ function App() {
     socket.on('admin_success', (success) => {
         if (success) {
             setIsAdmin(true);
-            alert("✅ Jesteś teraz administratorem! Możesz sterować wideo.");
+            alert("✅ Jesteś administratorem!");
         } else {
             alert("❌ Złe hasło!");
         }
@@ -105,6 +103,7 @@ function App() {
   const handleUrlSubmit = (e) => {
       e.preventDefault();
       
+      // LOGOWANIE ADMINA
       if (inputUrl.startsWith('/admin ')) {
           const password = inputUrl.split(' ')[1];
           socket.emit('auth_admin', password);
@@ -113,7 +112,7 @@ function App() {
       }
 
       if (!isAdmin) {
-          alert("🔒 Aby odblokować sterowanie, wpisz w pasku linku: /admin HASŁO");
+          alert("🔒 Najedź na górę i wpisz: /admin HASŁO");
           return;
       }
       if(inputUrl) { socket.emit('admin_change_url', inputUrl); setInputUrl(''); }
@@ -123,7 +122,7 @@ function App() {
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden font-sans">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative group">
         
-        {/* Pasek Adresu + Login */}
+        {/* Pasek Adresu + Login (Pojawia się po najechaniu) */}
         <div className="absolute top-0 left-0 w-full z-50 p-4 bg-gray-900/90 flex gap-2 border-b border-gray-700 transition-opacity duration-300 opacity-0 hover:opacity-100 items-center justify-center">
            <form onSubmit={handleUrlSubmit} className="flex w-full gap-2 max-w-4xl items-center">
              {!isAdmin && <span className="text-xl" title="Brak uprawnień">🔒</span>}
@@ -138,15 +137,13 @@ function App() {
              {isAdmin ? (
                  <button className="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded font-bold">Start</button>
              ) : (
-                <div className="flex gap-2">
-                    <button className="bg-gray-700 cursor-not-allowed text-gray-500 px-4 py-2 rounded font-bold">Start</button>
-                </div>
+                 <button className="bg-gray-700 cursor-not-allowed text-gray-500 px-4 py-2 rounded font-bold">Start</button>
              )}
 
              {user ? (
                  <img src={user.avatar} className="w-10 h-10 rounded-full border border-gray-500 ml-2" title={user.username} />
              ) : (
-                 <button onClick={handleLogin} className="bg-green-600 hover:bg-green-500 text-xs px-3 py-2 rounded text-white ml-2 font-bold">
+                 <button type="button" onClick={handleLogin} className="bg-green-600 hover:bg-green-500 text-xs px-3 py-2 rounded text-white ml-2 font-bold">
                     Zaloguj
                  </button>
              )}
@@ -170,7 +167,7 @@ function App() {
           ) : (
             <div className="flex w-full h-full items-center justify-center flex-col text-gray-500">
                 <span className="text-4xl mb-2">⬆️</span>
-                <span>{isAdmin ? "Wklej link na górze" : "Zaloguj się i wpisz /admin HASŁO w pasku linku"}</span>
+                <span>{isAdmin ? "Wklej link na górze" : "Najedź na górę i wpisz /admin HASŁO"}</span>
             </div>
           )}
         </div>

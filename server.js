@@ -76,8 +76,6 @@ let roomState = { currentUrl: null, isPlaying: false, currentTime: 0 };
 
 io.on('connection', (socket) => {
   socket.isAdmin = false;
-  socket.lastMessageTime = 0;
-
   socket.emit('sync_state', roomState);
 
   socket.on('auth_admin', (password) => {
@@ -89,7 +87,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- FUNKCJE ADMINA ---
   socket.on('admin_change_url', (url) => {
     if (!socket.isAdmin) return; 
     roomState.currentUrl = url; 
@@ -114,25 +111,7 @@ io.on('connection', (socket) => {
     io.emit('sync_seek', time);
   });
 
-  // --- CZAT (WYŁĄCZONY) ---
-  /*
-  socket.on('chat_message', async (msg) => {
-    if (!msg.text || msg.text.length > 500) return;
-    const now = Date.now();
-    if (now - socket.lastMessageTime < 1000) return; 
-    socket.lastMessageTime = now;
-
-    try {
-      await webhookClient.send({
-        content: msg.text,
-        username: msg.user,
-        avatarURL: msg.avatar || "https://cdn.discordapp.com/embed/avatars/0.png"
-      });
-    } catch (e) { console.error("Błąd Webhooka:", e); }
-    
-    io.emit('receive_message', { ...msg, fromDiscord: false });
-  });
-  */
+  // CZAT WYŁĄCZONY
 });
 
 server.listen(3002, () => console.log('Serwer działa na porcie 3002'));
