@@ -11,7 +11,7 @@ const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin"; // Hasło z .env
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
 const DEFAULT_REDIRECT_URI = "https://aleanimiec.vercel.app/";
 
@@ -75,26 +75,21 @@ client.login(DISCORD_TOKEN);
 let roomState = { currentUrl: null, isPlaying: false, currentTime: 0 };
 
 io.on('connection', (socket) => {
-  // Domyślnie użytkownik NIE JEST adminem
   socket.isAdmin = false;
-  // Zmienna do anty-spamu (ostatnia wiadomość)
   socket.lastMessageTime = 0;
 
   socket.emit('sync_state', roomState);
 
-  // Logowanie na admina przez specjalne zdarzenie
   socket.on('auth_admin', (password) => {
     if (password === ADMIN_PASSWORD) {
       socket.isAdmin = true;
-      socket.emit('admin_success', true); // Potwierdzenie dla klienta
+      socket.emit('admin_success', true);
     } else {
       socket.emit('admin_success', false);
     }
   });
 
-  // --- FUNKCJE TYLKO DLA ADMINA ---
-  // Dodajemy "if (!socket.isAdmin) return;" do każdej ważnej funkcji
-  
+  // --- FUNKCJE ADMINA ---
   socket.on('admin_change_url', (url) => {
     if (!socket.isAdmin) return; 
     roomState.currentUrl = url; 
@@ -119,12 +114,10 @@ io.on('connection', (socket) => {
     io.emit('sync_seek', time);
   });
 
-  // --- CZAT (Z ANTY-SPAMEM) ---
+  // --- CZAT (WYŁĄCZONY) ---
+  /*
   socket.on('chat_message', async (msg) => {
-    // 1. Sprawdź długość wiadomości (max 500 znaków)
     if (!msg.text || msg.text.length > 500) return;
-
-    // 2. Anty-spam (max 1 wiadomość na sekundę)
     const now = Date.now();
     if (now - socket.lastMessageTime < 1000) return; 
     socket.lastMessageTime = now;
@@ -139,6 +132,7 @@ io.on('connection', (socket) => {
     
     io.emit('receive_message', { ...msg, fromDiscord: false });
   });
+  */
 });
 
 server.listen(3002, () => console.log('Serwer działa na porcie 3002'));
