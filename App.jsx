@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
-// ADRES BACKENDU (Render)
-// Upewnij się, że ten adres jest poprawny!
-const SOCKET_URL = 'https://aleanimiec-backend.onrender.com/';
+// POPRAWKA: Usunięto ukośnik na końcu adresu!
+const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
 function App() {
@@ -25,7 +24,7 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const chatEndRef = useRef(null);
 
-  // --- KLUCZOWA POPRAWKA: ZABEZPIECZENIE PRZED PODWÓJNYM LOGOWANIEM ---
+  // Zabezpieczenie przed podwójnym logowaniem
   const hasFetched = useRef(false);
 
   // --- LOGOWANIE OAUTH2 ---
@@ -33,9 +32,8 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
 
-    // Sprawdzamy !hasFetched.current, żeby nie wysłać kodu dwa razy
     if (code && !user && !hasFetched.current) {
-      hasFetched.current = true; // Blokujemy kolejne próby natychmiast
+      hasFetched.current = true;
       
       console.log("Mam kod z Discorda, próbuję logować...");
 
@@ -47,13 +45,12 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             code,
-            // Wysyłamy backendowi informację, skąd wracamy (localhost czy vercel)
+            // Wysyłamy backendowi informację, skąd wracamy
             redirect_uri: window.location.origin + "/" 
         })
       })
       .then(res => {
           if (!res.ok) {
-            // Jeśli serwer zwróci błąd, rzuć wyjątek, żeby trafił do catch
             return res.text().then(text => { throw new Error(text) });
           }
           return res.json();
@@ -73,16 +70,15 @@ function App() {
       .catch(err => {
           console.error("❌ Błąd logowania:", err);
           alert("Błąd logowania: " + err.message);
-          hasFetched.current = false; // Odblokuj w razie błędu
+          hasFetched.current = false;
       });
     }
   }, []);
 
   const handleLogin = () => {
-    // PODMIEŃ NA SWÓJ CLIENT ID Z PANELU DISCORDA
     const CLIENT_ID = "1464662587466580234"; 
     
-    // Dynamicznie ustalamy adres powrotu (działa i na localhost i na Vercel)
+    // Dynamicznie ustalamy adres powrotu
     const CURRENT_ORIGIN = window.location.origin + "/";
     const REDIRECT_URI = encodeURIComponent(CURRENT_ORIGIN);
     
