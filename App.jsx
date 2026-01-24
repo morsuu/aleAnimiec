@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
-// Upewnij się, że adres NIE MA ukośnika na końcu
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
@@ -16,6 +15,25 @@ function App() {
   const playerRef = useRef(null);
   const isRemoteUpdate = useRef(false);
   const hasFetched = useRef(false);
+
+  // --- NOWOŚĆ: KEEP-ALIVE (PING CO 5 MINUT) ---
+  useEffect(() => {
+    const pingServer = () => {
+      fetch(`${SOCKET_URL}/keep-alive`)
+        .then(() => console.log("💓 Ping do serwera wysłany (Keep-Alive)"))
+        .catch(err => console.error("⚠️ Błąd pingu:", err));
+    };
+
+    // Wyślij pierwszy ping od razu
+    pingServer();
+
+    // Ustaw interwał co 5 minut (300 000 ms)
+    // Render zasypia po 15 min, więc 5 min jest bezpieczne
+    const intervalId = setInterval(pingServer, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+  // ---------------------------------------------
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -51,7 +69,6 @@ function App() {
   }, []);
 
   const handleLogin = () => {
-    // PODMIEŃ NA SWÓJ KLIENT ID
     const CLIENT_ID = "1464662587466580234"; 
     const REDIRECT_URI = encodeURIComponent(window.location.origin + "/");
     window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify`;
@@ -103,7 +120,6 @@ function App() {
   const handleUrlSubmit = (e) => {
       e.preventDefault();
       
-      // LOGOWANIE ADMINA
       if (inputUrl.startsWith('/admin ')) {
           const password = inputUrl.split(' ')[1];
           socket.emit('auth_admin', password);
@@ -122,7 +138,6 @@ function App() {
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden font-sans">
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative group">
         
-        {/* Pasek Adresu + Login (Pojawia się po najechaniu) */}
         <div className="absolute top-0 left-0 w-full z-50 p-4 bg-gray-900/90 flex gap-2 border-b border-gray-700 transition-opacity duration-300 opacity-0 hover:opacity-100 items-center justify-center">
            <form onSubmit={handleUrlSubmit} className="flex w-full gap-2 max-w-4xl items-center">
              {!isAdmin && <span className="text-xl" title="Brak uprawnień">🔒</span>}
