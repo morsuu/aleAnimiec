@@ -3,6 +3,7 @@ import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
 // ADRES BACKENDU (Render)
+// Upewnij się, że ten adres jest poprawny!
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com/';
 const socket = io(SOCKET_URL);
 
@@ -24,7 +25,7 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const chatEndRef = useRef(null);
 
-  // --- ZABEZPIECZENIE PRZED PODWÓJNYM LOGOWANIEM (React 18 Double Fetch) ---
+  // --- KLUCZOWA POPRAWKA: ZABEZPIECZENIE PRZED PODWÓJNYM LOGOWANIEM ---
   const hasFetched = useRef(false);
 
   // --- LOGOWANIE OAUTH2 ---
@@ -34,9 +35,11 @@ function App() {
 
     // Sprawdzamy !hasFetched.current, żeby nie wysłać kodu dwa razy
     if (code && !user && !hasFetched.current) {
-      hasFetched.current = true; // Blokujemy kolejne próby
+      hasFetched.current = true; // Blokujemy kolejne próby natychmiast
       
-      // Czyścimy URL
+      console.log("Mam kod z Discorda, próbuję logować...");
+
+      // Czyścimy URL z kodu
       window.history.replaceState({}, document.title, "/");
 
       fetch(`${SOCKET_URL}/api/auth/discord`, {
@@ -48,10 +51,16 @@ function App() {
             redirect_uri: window.location.origin + "/" 
         })
       })
-      .then(res => res.json())
+      .then(res => {
+          if (!res.ok) {
+            // Jeśli serwer zwróci błąd, rzuć wyjątek, żeby trafił do catch
+            return res.text().then(text => { throw new Error(text) });
+          }
+          return res.json();
+      })
       .then(userData => {
         if (userData.username) {
-          console.log("Zalogowano jako:", userData.username);
+          console.log("✅ Zalogowano pomyślnie jako:", userData.username);
           setUser({
             username: userData.username,
             id: userData.id,
@@ -62,15 +71,18 @@ function App() {
         }
       })
       .catch(err => {
-          console.error("Błąd logowania:", err);
-          hasFetched.current = false; // Resetujemy blokadę w razie błędu
+          console.error("❌ Błąd logowania:", err);
+          alert("Błąd logowania: " + err.message);
+          hasFetched.current = false; // Odblokuj w razie błędu
       });
     }
   }, []);
 
   const handleLogin = () => {
+    // PODMIEŃ NA SWÓJ CLIENT ID Z PANELU DISCORDA
     const CLIENT_ID = "1464662587466580234"; 
-    // Dynamicznie ustalamy adres powrotu (działa wszędzie)
+    
+    // Dynamicznie ustalamy adres powrotu (działa i na localhost i na Vercel)
     const CURRENT_ORIGIN = window.location.origin + "/";
     const REDIRECT_URI = encodeURIComponent(CURRENT_ORIGIN);
     
@@ -176,7 +188,7 @@ function App() {
       {/* LEWA STRONA (Wideo) */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative group">
         
-        {/* Pasek Adresu (pojawia się po najechaniu) */}
+        {/* Pasek Adresu */}
         <div className="absolute top-0 left-0 w-full z-50 p-4 bg-gray-900/90 flex gap-2 border-b border-gray-700 transition-opacity duration-300 opacity-0 hover:opacity-100">
            <form onSubmit={handleUrlSubmit} className="flex w-full gap-2 max-w-4xl mx-auto">
              <input 

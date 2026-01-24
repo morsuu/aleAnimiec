@@ -6,18 +6,17 @@ import cors from 'cors';
 import { Client, GatewayIntentBits, WebhookClient } from 'discord.js';
 import axios from 'axios';
 
-// --- TWOJE DANE KONFIGURACYJNE ---
+// --- DANE Z PLIKU .ENV (LUB RENDER ENVIRONMENT) ---
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// Domyślny redirect, używany jako fallback
+// Domyślny fallback (dla bezpieczeństwa)
 const DEFAULT_REDIRECT_URI = "https://aleanimiec.vercel.app/";
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const webhookClient = new WebhookClient({ url: WEBHOOK_URL });
-// ---------------------------------
 
 const app = express();
 app.use(cors());
@@ -30,7 +29,7 @@ const io = new Server(server, {
 
 // --- ENDPOINT DO LOGOWANIA OAUTH2 ---
 app.post('/api/auth/discord', async (req, res) => {
-  // Odbieramy kod ORAZ redirect_uri od frontendu
+  // ODBIERAMY 'redirect_uri' Z FRONTENDU!
   const { code, redirect_uri } = req.body;
   
   if (!code) return res.status(400).send('Brak kodu');
@@ -43,7 +42,7 @@ app.post('/api/auth/discord', async (req, res) => {
         client_secret: CLIENT_SECRET,
         code,
         grant_type: 'authorization_code',
-        // Używamy tego co przysłał frontend, lub fallbacku
+        // Używamy tego co przysłał frontend, żeby pasowało do tego, gdzie był użytkownik
         redirect_uri: redirect_uri || DEFAULT_REDIRECT_URI,
       }).toString(),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
@@ -59,7 +58,8 @@ app.post('/api/auth/discord', async (req, res) => {
 
   } catch (error) {
     console.error('Błąd logowania Discord:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Błąd autoryzacji' });
+    // Zwracamy szczegóły błędu do frontendu
+    res.status(500).json({ error: error.response?.data?.error_description || 'Błąd autoryzacji' });
   }
 });
 
