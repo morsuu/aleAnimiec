@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
-// Pamiętaj o zmianie na adres produkcyjny (Render) po wdrożeniu
+// ADRES BACKENDU (Render)
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com/';
 const socket = io(SOCKET_URL);
 
@@ -24,18 +24,29 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const chatEndRef = useRef(null);
 
+  // --- ZABEZPIECZENIE PRZED PODWÓJNYM LOGOWANIEM (React 18 Double Fetch) ---
+  const hasFetched = useRef(false);
+
   // --- LOGOWANIE OAUTH2 ---
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
 
-    if (code && !user) {
+    // Sprawdzamy !hasFetched.current, żeby nie wysłać kodu dwa razy
+    if (code && !user && !hasFetched.current) {
+      hasFetched.current = true; // Blokujemy kolejne próby
+      
+      // Czyścimy URL
       window.history.replaceState({}, document.title, "/");
 
       fetch(`${SOCKET_URL}/api/auth/discord`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        body: JSON.stringify({ 
+            code,
+            // Wysyłamy backendowi informację, skąd wracamy (localhost czy vercel)
+            redirect_uri: window.location.origin + "/" 
+        })
       })
       .then(res => res.json())
       .then(userData => {
@@ -50,13 +61,19 @@ function App() {
           });
         }
       })
-      .catch(err => console.error("Błąd logowania:", err));
+      .catch(err => {
+          console.error("Błąd logowania:", err);
+          hasFetched.current = false; // Resetujemy blokadę w razie błędu
+      });
     }
   }, []);
 
   const handleLogin = () => {
     const CLIENT_ID = "1464662587466580234"; 
-    const REDIRECT_URI = encodeURIComponent("https://aleanimiec.vercel.app/");
+    // Dynamicznie ustalamy adres powrotu (działa wszędzie)
+    const CURRENT_ORIGIN = window.location.origin + "/";
+    const REDIRECT_URI = encodeURIComponent(CURRENT_ORIGIN);
+    
     window.location.href = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify`;
   };
 
@@ -159,7 +176,7 @@ function App() {
       {/* LEWA STRONA (Wideo) */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative group">
         
-        {/* --- NOWY PASEK ADRESU (UKRYTY, POJAWIA SIĘ PRZY NAJECHANIU NA GÓRĘ) --- */}
+        {/* Pasek Adresu (pojawia się po najechaniu) */}
         <div className="absolute top-0 left-0 w-full z-50 p-4 bg-gray-900/90 flex gap-2 border-b border-gray-700 transition-opacity duration-300 opacity-0 hover:opacity-100">
            <form onSubmit={handleUrlSubmit} className="flex w-full gap-2 max-w-4xl mx-auto">
              <input 
