@@ -5,6 +5,37 @@ import io from 'socket.io-client';
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
+// Funkcja do konwersji linków Pixeldrain na bezpośredni URL do MP4
+function convertPixeldrainUrl(url) {
+  try {
+    // Pixeldrain list: https://pixeldrain.net/l/xxxxx
+    if (url.includes('pixeldrain.net/l/')) {
+      // Dla list nie możemy bezpośrednio odtworzyć - informujemy użytkownika
+      console.warn('⚠️ Link do listy Pixeldrain - użyj linku do konkretnego pliku');
+      return url; // Zwracamy oryginalny, może ReactPlayer jakoś obsłuży
+    }
+    
+    // Pixeldrain single file: https://pixeldrain.net/u/xxxxx
+    const pixeldrainMatch = url.match(/pixeldrain\.net\/u\/([a-zA-Z0-9_-]+)/);
+    if (pixeldrainMatch) {
+      const fileId = pixeldrainMatch[1];
+      // Konwertujemy na bezpośredni link do API
+      return `https://pixeldrain.com/api/file/${fileId}`;
+    }
+    
+    // Jeśli to już jest link API, zostawiamy bez zmian
+    if (url.includes('pixeldrain.com/api/file/')) {
+      return url;
+    }
+    
+    // Jeśli to inny link (YouTube, etc.), zwracamy bez zmian
+    return url;
+  } catch (error) {
+    console.error('Błąd parsowania URL:', error);
+    return url;
+  }
+}
+
 function App() {
   const [url, setUrl] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -16,7 +47,7 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const hasFetched = useRef(false);
 
-  // --- NOWOŚĆ: KEEP-ALIVE (PING CO 5 MINUT) ---
+  // --- KEEP-ALIVE (PING CO 5 MINUT) ---
   useEffect(() => {
     const pingServer = () => {
       fetch(`${SOCKET_URL}/keep-alive`)
@@ -24,16 +55,11 @@ function App() {
         .catch(err => console.error("⚠️ Błąd pingu:", err));
     };
 
-    // Wyślij pierwszy ping od razu
     pingServer();
-
-    // Ustaw interwał co 5 minut (300 000 ms)
-    // Render zasypia po 15 min, więc 5 min jest bezpieczne
     const intervalId = setInterval(pingServer, 5 * 60 * 1000);
 
     return () => clearInterval(intervalId);
   }, []);
-  // ---------------------------------------------
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -76,18 +102,29 @@ function App() {
 
   useEffect(() => {
     socket.on('sync_state', (state) => {
-      if (state.currentUrl) setUrl(state.currentUrl);
+      if (state.currentUrl) {
+        const convertedUrl = convertPixeldrainUrl(state.currentUrl);
+        setUrl(convertedUrl);
+      }
       setIsPlaying(state.isPlaying);
     });
-    socket.on('sync_url', (newUrl) => { setUrl(newUrl); setIsPlaying(true); });
+    
+    socket.on('sync_url', (newUrl) => { 
+      const convertedUrl = convertPixeldrainUrl(newUrl);
+      setUrl(convertedUrl); 
+      setIsPlaying(true); 
+    });
+    
     socket.on('sync_play', (time) => { 
         isRemoteUpdate.current = true; setIsPlaying(true); 
         if (playerRef.current && Math.abs(playerRef.current.getCurrentTime() - time) > 0.5) playerRef.current.seekTo(time, 'seconds');
     });
+    
     socket.on('sync_pause', (time) => { 
         isRemoteUpdate.current = true; setIsPlaying(false);
         if(playerRef.current) playerRef.current.seekTo(time, 'seconds');
     });
+    
     socket.on('sync_seek', (time) => { 
         isRemoteUpdate.current = true; 
         if(playerRef.current) playerRef.current.seekTo(time, 'seconds'); 
@@ -131,7 +168,14 @@ function App() {
           alert("🔒 Najedź na górę i wpisz: /admin HASŁO");
           return;
       }
-      if(inputUrl) { socket.emit('admin_change_url', inputUrl); setInputUrl(''); }
+      
+      if(inputUrl) { 
+          const convertedUrl = convertPixeldrainUrl(inputUrl);
+          console.log('📺 Oryginalny URL:', inputUrl);
+          console.log('🔄 Przekonwertowany URL:', convertedUrl);
+          socket.emit('admin_change_url', convertedUrl); 
+          setInputUrl(''); 
+      }
   };
 
   return (
@@ -146,7 +190,7 @@ function App() {
                 className={`flex-1 p-2 bg-gray-800 rounded border focus:outline-none ${isAdmin ? 'border-gray-600 focus:border-indigo-500' : 'border-red-900 text-gray-300'}`}
                 value={inputUrl} 
                 onChange={e=>setInputUrl(e.target.value)} 
-                placeholder={isAdmin ? "Link wideo..." : "Wpisz '/admin HASŁO' aby odblokować"} 
+                placeholder={isAdmin ? "Link wideo (YouTube, Pixeldrain /u/xxxxx)..." : "Wpisz '/admin HASŁO' aby odblokować"} 
              />
              
              {isAdmin ? (
@@ -177,12 +221,19 @@ function App() {
                 style={{ position: 'absolute', top: 0, left: 0 }} 
                 onPlay={handlePlay} 
                 onPause={handlePause} 
-                config={{ file: { forceVideo: true } }}
+                config={{ 
+                  file: { 
+                    forceVideo: true,
+                    attributes: {
+                      crossOrigin: 'anonymous'
+                    }
+                  } 
+                }}
             />
           ) : (
             <div className="flex w-full h-full items-center justify-center flex-col text-gray-500">
                 <span className="text-4xl mb-2">⬆️</span>
-                <span>{isAdmin ? "Wklej link na górze" : "Najedź na górę i wpisz /admin HASŁO"}</span>
+                <span>{isAdmin ? "Wklej link na górze (Pixeldrain: /u/xxxxx)" : "Najedź na górę i wpisz /admin HASŁO"}</span>
             </div>
           )}
         </div>
