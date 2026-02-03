@@ -5,6 +5,9 @@ import io from 'socket.io-client';
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
+// API Key dla Pixeldrain
+const PIXELDRAIN_API_KEY = '4e9f2b55-2242-4aaa-8ea2-c22943eeea31';
+
 // Funkcja do wykrywania i konwersji linków Pixeldrain
 function analyzeUrl(url) {
   try {
@@ -25,11 +28,12 @@ function analyzeUrl(url) {
     const pixeldrainMatch = url.match(/pixeldrain\.(net|com)\/u\/([a-zA-Z0-9_-]+)/);
     if (pixeldrainMatch) {
       const fileId = pixeldrainMatch[2];
-      const embedUrl = `https://pixeldrain.com/u/${fileId}/embed`;
-      console.log('✅ Pixeldrain embed URL:', embedUrl);
+      // Używamy Basic Auth w URL: https://:API_KEY@pixeldrain.com/api/file/{id}
+      const directUrl = `https://:${PIXELDRAIN_API_KEY}@pixeldrain.com/api/file/${fileId}`;
+      console.log('✅ Pixeldrain direct URL with auth');
       return {
         type: 'pixeldrain',
-        url: embedUrl,
+        url: directUrl,
         fileId: fileId,
         originalUrl: url
       };
@@ -39,24 +43,11 @@ function analyzeUrl(url) {
     const apiMatch = url.match(/pixeldrain\.(net|com)\/api\/file\/([a-zA-Z0-9_-]+)/);
     if (apiMatch) {
       const fileId = apiMatch[2];
-      const embedUrl = `https://pixeldrain.com/u/${fileId}/embed`;
-      console.log('✅ Pixeldrain embed URL (z API):', embedUrl);
+      const directUrl = `https://:${PIXELDRAIN_API_KEY}@pixeldrain.com/api/file/${fileId}`;
+      console.log('✅ Pixeldrain direct URL with auth (już API)');
       return {
         type: 'pixeldrain',
-        url: embedUrl,
-        fileId: fileId,
-        originalUrl: url
-      };
-    }
-    
-    // Jeśli to już jest embed link
-    const embedMatch = url.match(/pixeldrain\.(net|com)\/u\/([a-zA-Z0-9_-]+)\/embed/);
-    if (embedMatch) {
-      const fileId = embedMatch[2];
-      console.log('✅ Pixeldrain już jest embed');
-      return {
-        type: 'pixeldrain',
-        url: url,
+        url: directUrl,
         fileId: fileId,
         originalUrl: url
       };
@@ -79,28 +70,59 @@ function analyzeUrl(url) {
   }
 }
 
-// Komponent dla Pixeldrain - używa iframe embed
+// Komponent dla Pixeldrain - używa natywnego video
 function PixeldrainPlayer({ url, isPlaying, onPlay, onPause, playerRef }) {
-  // Dla iframe nie mamy bezpośredniej kontroli nad odtwarzaniem
-  // ale możemy używać postMessage API jeśli Pixeldrain to wspiera
-  
+  const videoRef = useRef(null);
+  const lastTimeRef = useRef(0);
+
   useEffect(() => {
-    // Ustawiamy mock playerRef dla kompatybilności z resztą kodu
-    playerRef.current = {
-      getCurrentTime: () => 0,
-      seekTo: (time) => {
-        console.log('Seek nie jest wspierany dla Pixeldrain iframe');
-      }
-    };
+    if (videoRef.current) {
+      playerRef.current = {
+        getCurrentTime: () => videoRef.current?.currentTime || 0,
+        seekTo: (time) => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = time;
+          }
+        }
+      };
+    }
   }, [playerRef]);
 
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.play().catch(err => console.error('Play error:', err));
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPlaying]);
+
+  const handlePlay = () => {
+    if (onPlay) onPlay();
+  };
+
+  const handlePause = () => {
+    if (onPause) onPause();
+  };
+
+  const handleSeeking = () => {
+    const currentTime = videoRef.current?.currentTime || 0;
+    if (Math.abs(currentTime - lastTimeRef.current) > 1) {
+      lastTimeRef.current = currentTime;
+    }
+  };
+
   return (
-    <iframe
+    <video
+      ref={videoRef}
       src={url}
+      controls
       className="w-full h-full"
-      style={{ position: 'absolute', top: 0, left: 0, border: 'none' }}
-      allow="autoplay; fullscreen"
-      allowFullScreen
+      style={{ position: 'absolute', top: 0, left: 0 }}
+      onPlay={handlePlay}
+      onPause={handlePause}
+      onSeeking={handleSeeking}
     />
   );
 }
