@@ -14,16 +14,20 @@ function analyzeUrl(url) {
       const fileId = pixeldrainMatch[1];
       return {
         type: 'pixeldrain',
-        url: `https://pixeldrain.com/api/file/${fileId}`,
+        url: `https://pixeldrain.com/u/${fileId}/embed`,
+        fileId: fileId,
         originalUrl: url
       };
     }
     
     // Jeśli to już jest link API
-    if (url.includes('pixeldrain.com/api/file/')) {
+    const apiMatch = url.match(/pixeldrain\.com\/api\/file\/([a-zA-Z0-9_-]+)/);
+    if (apiMatch) {
+      const fileId = apiMatch[1];
       return {
         type: 'pixeldrain',
-        url: url,
+        url: `https://pixeldrain.com/u/${fileId}/embed`,
+        fileId: fileId,
         originalUrl: url
       };
     }
@@ -44,63 +48,28 @@ function analyzeUrl(url) {
   }
 }
 
-// Komponent dla Pixeldrain
-function PixeldrainPlayer({ url, isPlaying, onPlay, onPause, onSeek, playerRef }) {
-  const videoRef = useRef(null);
-  const lastTimeRef = useRef(0);
-
+// Komponent dla Pixeldrain - używa iframe embed
+function PixeldrainPlayer({ url, isPlaying, onPlay, onPause, playerRef }) {
+  // Dla iframe nie mamy bezpośredniej kontroli nad odtwarzaniem
+  // ale możemy używać postMessage API jeśli Pixeldrain to wspiera
+  
   useEffect(() => {
-    if (videoRef.current) {
-      playerRef.current = {
-        getCurrentTime: () => videoRef.current?.currentTime || 0,
-        seekTo: (time) => {
-          if (videoRef.current) {
-            videoRef.current.currentTime = time;
-          }
-        }
-      };
-    }
+    // Ustawiamy mock playerRef dla kompatybilności z resztą kodu
+    playerRef.current = {
+      getCurrentTime: () => 0,
+      seekTo: (time) => {
+        console.log('Seek nie jest wspierany dla Pixeldrain iframe');
+      }
+    };
   }, [playerRef]);
 
-  useEffect(() => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.play().catch(err => console.error('Play error:', err));
-      } else {
-        videoRef.current.pause();
-      }
-    }
-  }, [isPlaying]);
-
-  const handlePlay = () => {
-    if (onPlay) onPlay();
-  };
-
-  const handlePause = () => {
-    if (onPause) onPause();
-  };
-
-  const handleSeeking = () => {
-    if (onSeek && videoRef.current) {
-      const currentTime = videoRef.current.currentTime;
-      if (Math.abs(currentTime - lastTimeRef.current) > 1) {
-        onSeek(currentTime);
-        lastTimeRef.current = currentTime;
-      }
-    }
-  };
-
   return (
-    <video
-      ref={videoRef}
+    <iframe
       src={url}
-      controls
       className="w-full h-full"
-      style={{ position: 'absolute', top: 0, left: 0 }}
-      onPlay={handlePlay}
-      onPause={handlePause}
-      onSeeking={handleSeeking}
-      crossOrigin="anonymous"
+      style={{ position: 'absolute', top: 0, left: 0, border: 'none' }}
+      allow="autoplay; fullscreen"
+      allowFullScreen
     />
   );
 }
@@ -307,7 +276,6 @@ function App() {
                 isPlaying={isPlaying}
                 onPlay={handlePlay}
                 onPause={handlePause}
-                onSeek={handleSeek}
                 playerRef={playerRef}
               />
             ) : (
