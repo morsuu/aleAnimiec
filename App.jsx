@@ -8,38 +8,69 @@ const socket = io(SOCKET_URL);
 // Funkcja do wykrywania i konwersji linków Pixeldrain
 function analyzeUrl(url) {
   try {
+    console.log('🔍 Analizuję URL:', url);
+    
+    // Pixeldrain lista: https://pixeldrain.net/l/xxxxx
+    const listMatch = url.match(/pixeldrain\.(net|com)\/l\/([a-zA-Z0-9_-]+)/);
+    if (listMatch) {
+      console.warn('⚠️ Link do listy Pixeldrain - użyj linku do konkretnego pliku (/u/)');
+      return {
+        type: 'other',
+        url: url,
+        originalUrl: url
+      };
+    }
+    
     // Pixeldrain single file: https://pixeldrain.net/u/xxxxx
-    const pixeldrainMatch = url.match(/pixeldrain\.net\/u\/([a-zA-Z0-9_-]+)/);
+    const pixeldrainMatch = url.match(/pixeldrain\.(net|com)\/u\/([a-zA-Z0-9_-]+)/);
     if (pixeldrainMatch) {
-      const fileId = pixeldrainMatch[1];
+      const fileId = pixeldrainMatch[2];
+      const embedUrl = `https://pixeldrain.com/u/${fileId}/embed`;
+      console.log('✅ Pixeldrain embed URL:', embedUrl);
       return {
         type: 'pixeldrain',
-        url: `https://pixeldrain.com/u/${fileId}/embed`,
+        url: embedUrl,
         fileId: fileId,
         originalUrl: url
       };
     }
     
-    // Jeśli to już jest link API
-    const apiMatch = url.match(/pixeldrain\.com\/api\/file\/([a-zA-Z0-9_-]+)/);
+    // Jeśli to już jest link API (.net lub .com)
+    const apiMatch = url.match(/pixeldrain\.(net|com)\/api\/file\/([a-zA-Z0-9_-]+)/);
     if (apiMatch) {
-      const fileId = apiMatch[1];
+      const fileId = apiMatch[2];
+      const embedUrl = `https://pixeldrain.com/u/${fileId}/embed`;
+      console.log('✅ Pixeldrain embed URL (z API):', embedUrl);
       return {
         type: 'pixeldrain',
-        url: `https://pixeldrain.com/u/${fileId}/embed`,
+        url: embedUrl,
+        fileId: fileId,
+        originalUrl: url
+      };
+    }
+    
+    // Jeśli to już jest embed link
+    const embedMatch = url.match(/pixeldrain\.(net|com)\/u\/([a-zA-Z0-9_-]+)\/embed/);
+    if (embedMatch) {
+      const fileId = embedMatch[2];
+      console.log('✅ Pixeldrain już jest embed');
+      return {
+        type: 'pixeldrain',
+        url: url,
         fileId: fileId,
         originalUrl: url
       };
     }
     
     // Inne linki (YouTube, etc.)
+    console.log('ℹ️ Inny typ URL (YouTube, etc.)');
     return {
       type: 'other',
       url: url,
       originalUrl: url
     };
   } catch (error) {
-    console.error('Błąd parsowania URL:', error);
+    console.error('❌ Błąd parsowania URL:', error);
     return {
       type: 'other',
       url: url,
