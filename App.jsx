@@ -5,39 +5,108 @@ import io from 'socket.io-client';
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
-// Funkcja do konwersji linków Pixeldrain na bezpośredni URL do MP4
-function convertPixeldrainUrl(url) {
+// Funkcja do wykrywania i konwersji linków Pixeldrain
+function analyzeUrl(url) {
   try {
-    // Pixeldrain list: https://pixeldrain.net/l/xxxxx
-    if (url.includes('pixeldrain.net/l/')) {
-      // Dla list nie możemy bezpośrednio odtworzyć - informujemy użytkownika
-      console.warn('⚠️ Link do listy Pixeldrain - użyj linku do konkretnego pliku');
-      return url; // Zwracamy oryginalny, może ReactPlayer jakoś obsłuży
-    }
-    
     // Pixeldrain single file: https://pixeldrain.net/u/xxxxx
     const pixeldrainMatch = url.match(/pixeldrain\.net\/u\/([a-zA-Z0-9_-]+)/);
     if (pixeldrainMatch) {
       const fileId = pixeldrainMatch[1];
-      // Konwertujemy na bezpośredni link do API
-      return `https://pixeldrain.com/api/file/${fileId}`;
+      return {
+        type: 'pixeldrain',
+        url: `https://pixeldrain.com/api/file/${fileId}`,
+        originalUrl: url
+      };
     }
     
-    // Jeśli to już jest link API, zostawiamy bez zmian
+    // Jeśli to już jest link API
     if (url.includes('pixeldrain.com/api/file/')) {
-      return url;
+      return {
+        type: 'pixeldrain',
+        url: url,
+        originalUrl: url
+      };
     }
     
-    // Jeśli to inny link (YouTube, etc.), zwracamy bez zmian
-    return url;
+    // Inne linki (YouTube, etc.)
+    return {
+      type: 'other',
+      url: url,
+      originalUrl: url
+    };
   } catch (error) {
     console.error('Błąd parsowania URL:', error);
-    return url;
+    return {
+      type: 'other',
+      url: url,
+      originalUrl: url
+    };
   }
 }
 
+// Komponent dla Pixeldrain
+function PixeldrainPlayer({ url, isPlaying, onPlay, onPause, onSeek, playerRef }) {
+  const videoRef = useRef(null);
+  const lastTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      playerRef.current = {
+        getCurrentTime: () => videoRef.current?.currentTime || 0,
+        seekTo: (time) => {
+          if (videoRef.current) {
+            videoRef.current.currentTime = time;
+          }
+        }
+      };
+    }
+  }, [playerRef]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.play().catch(err => console.error('Play error:', err));
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isPlaying]);
+
+  const handlePlay = () => {
+    if (onPlay) onPlay();
+  };
+
+  const handlePause = () => {
+    if (onPause) onPause();
+  };
+
+  const handleSeeking = () => {
+    if (onSeek && videoRef.current) {
+      const currentTime = videoRef.current.currentTime;
+      if (Math.abs(currentTime - lastTimeRef.current) > 1) {
+        onSeek(currentTime);
+        lastTimeRef.current = currentTime;
+      }
+    }
+  };
+
+  return (
+    <video
+      ref={videoRef}
+      src={url}
+      controls
+      className="w-full h-full"
+      style={{ position: 'absolute', top: 0, left: 0 }}
+      onPlay={handlePlay}
+      onPause={handlePause}
+      onSeeking={handleSeeking}
+      crossOrigin="anonymous"
+    />
+  );
+}
+
 function App() {
-  const [url, setUrl] = useState('');
+  const [urlData, setUrlData] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [inputUrl, setInputUrl] = useState('');
   const [user, setUser] = useState(null);
@@ -103,31 +172,40 @@ function App() {
   useEffect(() => {
     socket.on('sync_state', (state) => {
       if (state.currentUrl) {
-        const convertedUrl = convertPixeldrainUrl(state.currentUrl);
-        setUrl(convertedUrl);
+        const analyzed = analyzeUrl(state.currentUrl);
+        setUrlData(analyzed);
       }
       setIsPlaying(state.isPlaying);
     });
     
     socket.on('sync_url', (newUrl) => { 
-      const convertedUrl = convertPixeldrainUrl(newUrl);
-      setUrl(convertedUrl); 
+      const analyzed = analyzeUrl(newUrl);
+      console.log('📺 Otrzymano URL:', analyzed);
+      setUrlData(analyzed); 
       setIsPlaying(true); 
     });
     
     socket.on('sync_play', (time) => { 
-        isRemoteUpdate.current = true; setIsPlaying(true); 
-        if (playerRef.current && Math.abs(playerRef.current.getCurrentTime() - time) > 0.5) playerRef.current.seekTo(time, 'seconds');
+        isRemoteUpdate.current = true; 
+        setIsPlaying(true); 
+        if (playerRef.current && Math.abs(playerRef.current.getCurrentTime() - time) > 0.5) {
+          playerRef.current.seekTo(time);
+        }
     });
     
     socket.on('sync_pause', (time) => { 
-        isRemoteUpdate.current = true; setIsPlaying(false);
-        if(playerRef.current) playerRef.current.seekTo(time, 'seconds');
+        isRemoteUpdate.current = true; 
+        setIsPlaying(false);
+        if(playerRef.current) {
+          playerRef.current.seekTo(time);
+        }
     });
     
     socket.on('sync_seek', (time) => { 
         isRemoteUpdate.current = true; 
-        if(playerRef.current) playerRef.current.seekTo(time, 'seconds'); 
+        if(playerRef.current) {
+          playerRef.current.seekTo(time); 
+        }
     });
     
     socket.on('admin_success', (success) => {
@@ -144,14 +222,25 @@ function App() {
 
   const handlePlay = () => { 
     if (!isAdmin) return; 
-    if (!isRemoteUpdate.current) socket.emit('admin_play', playerRef.current.getCurrentTime());
+    if (!isRemoteUpdate.current && playerRef.current) {
+      socket.emit('admin_play', playerRef.current.getCurrentTime());
+    }
     setTimeout(() => { isRemoteUpdate.current = false; }, 100); 
   };
 
   const handlePause = () => { 
     if (!isAdmin) return; 
-    if (!isRemoteUpdate.current) socket.emit('admin_pause', playerRef.current.getCurrentTime());
+    if (!isRemoteUpdate.current && playerRef.current) {
+      socket.emit('admin_pause', playerRef.current.getCurrentTime());
+    }
     setTimeout(() => { isRemoteUpdate.current = false; }, 100); 
+  };
+
+  const handleSeek = (time) => {
+    if (!isAdmin) return;
+    if (!isRemoteUpdate.current) {
+      socket.emit('admin_seek', time);
+    }
   };
 
   const handleUrlSubmit = (e) => {
@@ -170,10 +259,10 @@ function App() {
       }
       
       if(inputUrl) { 
-          const convertedUrl = convertPixeldrainUrl(inputUrl);
-          console.log('📺 Oryginalny URL:', inputUrl);
-          console.log('🔄 Przekonwertowany URL:', convertedUrl);
-          socket.emit('admin_change_url', convertedUrl); 
+          const analyzed = analyzeUrl(inputUrl);
+          console.log('📤 Wysyłam URL:', analyzed);
+          // Wysyłamy oryginalny URL do backendu
+          socket.emit('admin_change_url', analyzed.originalUrl); 
           setInputUrl(''); 
       }
   };
@@ -190,7 +279,7 @@ function App() {
                 className={`flex-1 p-2 bg-gray-800 rounded border focus:outline-none ${isAdmin ? 'border-gray-600 focus:border-indigo-500' : 'border-red-900 text-gray-300'}`}
                 value={inputUrl} 
                 onChange={e=>setInputUrl(e.target.value)} 
-                placeholder={isAdmin ? "Link wideo (YouTube, Pixeldrain /u/xxxxx)..." : "Wpisz '/admin HASŁO' aby odblokować"} 
+                placeholder={isAdmin ? "Link wideo (YouTube, Pixeldrain)..." : "Wpisz '/admin HASŁO' aby odblokować"} 
              />
              
              {isAdmin ? (
@@ -211,13 +300,24 @@ function App() {
         </div>
         
         <div className="flex-1 bg-black relative w-full h-full overflow-hidden">
-          {url ? (
-            <ReactPlayer 
+          {urlData ? (
+            urlData.type === 'pixeldrain' ? (
+              <PixeldrainPlayer
+                url={urlData.url}
+                isPlaying={isPlaying}
+                onPlay={handlePlay}
+                onPause={handlePause}
+                onSeek={handleSeek}
+                playerRef={playerRef}
+              />
+            ) : (
+              <ReactPlayer 
                 ref={playerRef} 
-                url={url} 
+                url={urlData.url} 
                 playing={isPlaying} 
                 controls={true} 
-                width="100%" height="100%"
+                width="100%" 
+                height="100%"
                 style={{ position: 'absolute', top: 0, left: 0 }} 
                 onPlay={handlePlay} 
                 onPause={handlePause} 
@@ -229,11 +329,12 @@ function App() {
                     }
                   } 
                 }}
-            />
+              />
+            )
           ) : (
             <div className="flex w-full h-full items-center justify-center flex-col text-gray-500">
                 <span className="text-4xl mb-2">⬆️</span>
-                <span>{isAdmin ? "Wklej link na górze (Pixeldrain: /u/xxxxx)" : "Najedź na górę i wpisz /admin HASŁO"}</span>
+                <span>{isAdmin ? "Wklej link na górze" : "Najedź na górę i wpisz /admin HASŁO"}</span>
             </div>
           )}
         </div>
