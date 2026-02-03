@@ -16,17 +16,24 @@ function App() {
   const isRemoteUpdate = useRef(false);
   const hasFetched = useRef(false);
 
-  // --- KEEP-ALIVE (PING CO 5 MINUT) ---
+  // --- NOWOŚĆ: KEEP-ALIVE (PING CO 5 MINUT) ---
   useEffect(() => {
     const pingServer = () => {
       fetch(`${SOCKET_URL}/keep-alive`)
         .then(() => console.log("💓 Ping do serwera wysłany (Keep-Alive)"))
         .catch(err => console.error("⚠️ Błąd pingu:", err));
     };
+
+    // Wyślij pierwszy ping od razu
     pingServer();
+
+    // Ustaw interwał co 5 minut (300 000 ms)
+    // Render zasypia po 15 min, więc 5 min jest bezpieczne
     const intervalId = setInterval(pingServer, 5 * 60 * 1000);
+
     return () => clearInterval(intervalId);
   }, []);
+  // ---------------------------------------------
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -124,26 +131,7 @@ function App() {
           alert("🔒 Najedź na górę i wpisz: /admin HASŁO");
           return;
       }
-      
-      if(inputUrl) { 
-        let urlToSend = inputUrl;
-
-        // --- OBSŁUGA PIXELDRAIN ---
-        // Wykrywa formaty: pixeldrain.net, pixeldrain.com, /u/ (user view) oraz /api/file/
-        const pdMatch = inputUrl.match(/pixeldrain\.(?:net|com)\/(?:api\/file|u)\/([a-zA-Z0-9]+)/);
-        
-        if (pdMatch && pdMatch[1]) {
-            // 1. Ustawiamy domenę na .com (kanoniczna)
-            // 2. Używamy endpointu /api/file/ (bezpośredni plik)
-            // 3. Dodajemy na końcu '#.mp4' - to trick dla ReactPlayer, 
-            //    żeby wymusić użycie odtwarzacza wideo zamiast próby osadzania linku jako iframe
-            urlToSend = `https://pixeldrain.com/api/file/${pdMatch[1]}#.mp4`;
-        }
-        // --------------------------
-
-        socket.emit('admin_change_url', urlToSend); 
-        setInputUrl(''); 
-      }
+      if(inputUrl) { socket.emit('admin_change_url', inputUrl); setInputUrl(''); }
   };
 
   return (
@@ -158,7 +146,7 @@ function App() {
                 className={`flex-1 p-2 bg-gray-800 rounded border focus:outline-none ${isAdmin ? 'border-gray-600 focus:border-indigo-500' : 'border-red-900 text-gray-300'}`}
                 value={inputUrl} 
                 onChange={e=>setInputUrl(e.target.value)} 
-                placeholder={isAdmin ? "Link wideo (YouTube, Pixeldrain...)" : "Wpisz '/admin HASŁO' aby odblokować"} 
+                placeholder={isAdmin ? "Link wideo..." : "Wpisz '/admin HASŁO' aby odblokować"} 
              />
              
              {isAdmin ? (
@@ -189,13 +177,7 @@ function App() {
                 style={{ position: 'absolute', top: 0, left: 0 }} 
                 onPlay={handlePlay} 
                 onPause={handlePause} 
-                // forceVideo jest kluczowe dla plików bezpośrednich, a trick z #.mp4 w URLu aktywuje tę opcję
-                config={{ 
-                    file: { 
-                        forceVideo: true, 
-                        attributes: { crossOrigin: "anonymous" } 
-                    } 
-                }}
+                config={{ file: { forceVideo: true } }}
             />
           ) : (
             <div className="flex w-full h-full items-center justify-center flex-col text-gray-500">
