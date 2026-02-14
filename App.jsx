@@ -117,7 +117,31 @@ function App() {
     setTimeout(() => { isRemoteUpdate.current = false; }, 100); 
   };
 
-  const handleUrlSubmit = (e) => {
+  const convertPixeldrainUrl = async (inputUrl) => {
+      const match = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/(u|l)\/([a-zA-Z0-9]+)/);
+      if (!match) return inputUrl;
+
+      const [, , type, id] = match;
+
+      if (type === 'u') {
+          return `https://pixeldrain.com/api/file/${id}`;
+      }
+
+      // type === 'l' — fetch list and get first file
+      try {
+          const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          if (Array.isArray(data.files) && data.files.length > 0) {
+              return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+          }
+      } catch (err) {
+          console.error("Błąd pobierania listy pixeldrain:", err);
+      }
+      return inputUrl;
+  };
+
+  const handleUrlSubmit = async (e) => {
       e.preventDefault();
       
       if (inputUrl.startsWith('/admin ')) {
@@ -131,7 +155,11 @@ function App() {
           alert("🔒 Najedź na górę i wpisz: /admin HASŁO");
           return;
       }
-      if(inputUrl) { socket.emit('admin_change_url', inputUrl); setInputUrl(''); }
+      if(inputUrl) {
+          const finalUrl = await convertPixeldrainUrl(inputUrl);
+          socket.emit('admin_change_url', finalUrl);
+          setInputUrl('');
+      }
   };
 
   return (
