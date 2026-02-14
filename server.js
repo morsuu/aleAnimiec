@@ -25,6 +25,38 @@ app.get('/keep-alive', (req, res) => {
   res.status(200).send('Stayin alive!');
 });
 
+// --- PROXY PIXELDRAIN ---
+app.get('/api/proxy/pixeldrain/:fileId', async (req, res) => {
+  const { fileId } = req.params;
+  if (!/^[a-zA-Z0-9]{1,50}$/.test(fileId)) {
+    return res.status(400).send('Invalid file ID');
+  }
+  try {
+    if (req.query.list === 'true') {
+      const response = await axios.get(`https://pixeldrain.com/api/list/${fileId}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      return res.json(response.data);
+    }
+    const response = await axios.get(`https://pixeldrain.com/api/file/${fileId}`, {
+      responseType: 'stream',
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    res.set('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+    if (response.headers['content-length']) {
+      res.set('Content-Length', response.headers['content-length']);
+    }
+    if (response.headers['accept-ranges']) {
+      res.set('Accept-Ranges', response.headers['accept-ranges']);
+    }
+    response.data.on('error', (err) => { console.error('Stream error:', err); res.end(); });
+    response.data.pipe(res);
+  } catch (err) {
+    console.error('Pixeldrain proxy error:', err.message);
+    res.status(err.response?.status || 502).send('Proxy error');
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] }
