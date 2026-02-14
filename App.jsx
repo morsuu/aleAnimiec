@@ -1,9 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import ReactPlayer from 'react-player';
 import io from 'socket.io-client';
 
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
+
+const isPixeldrainUrl = (url) => /^https?:\/\/pixeldrain\.(com|net)\/api\/file\//.test(url);
+
+const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, style, onPlay, onPause }, ref) => {
+  const videoRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    getCurrentTime: () => videoRef.current ? videoRef.current.currentTime : 0,
+    seekTo: (time) => { if (videoRef.current) videoRef.current.currentTime = time; },
+  }));
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (playing) {
+      videoRef.current.play().catch((err) => console.warn('Autoplay failed:', err));
+    } else {
+      videoRef.current.pause();
+    }
+  }, [playing]);
+
+  return (
+    <video
+      ref={videoRef}
+      src={url}
+      controls={controls}
+      style={{ ...style, width: width || '100%', height: height || '100%', objectFit: 'contain' }}
+      onPlay={onPlay}
+      onPause={onPause}
+      preload="auto"
+    />
+  );
+});
+
+PixeldrainPlayer.displayName = 'PixeldrainPlayer';
 
 function App() {
   const [url, setUrl] = useState('');
@@ -121,17 +155,17 @@ function App() {
       // Handle direct API URLs like https://pixeldrain.net/api/file/ID or https://pixeldrain.net/api/list/ID
       const apiMatch = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/api\/(file|list)\/([a-zA-Z0-9]+)/);
       if (apiMatch) {
-          const [, , apiType, id] = apiMatch;
+          const [, domain, apiType, id] = apiMatch;
           if (apiType === 'file') {
-              return `https://pixeldrain.com/api/file/${id}`;
+              return `https://pixeldrain.${domain}/api/file/${id}`;
           }
           // apiType === 'list'
           try {
-              const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+              const res = await fetch(`https://pixeldrain.${domain}/api/list/${id}`);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const data = await res.json();
               if (Array.isArray(data.files) && data.files.length > 0) {
-                  return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+                  return `https://pixeldrain.${domain}/api/file/${data.files[0].id}`;
               }
           } catch (err) {
               console.error("Błąd pobierania listy pixeldrain:", err);
@@ -142,19 +176,19 @@ function App() {
       const match = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/(u|l)\/([a-zA-Z0-9]+)/);
       if (!match) return inputUrl;
 
-      const [, , type, id] = match;
+      const [, domain, type, id] = match;
 
       if (type === 'u') {
-          return `https://pixeldrain.com/api/file/${id}`;
+          return `https://pixeldrain.${domain}/api/file/${id}`;
       }
 
       // type === 'l' — fetch list and get first file
       try {
-          const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+          const res = await fetch(`https://pixeldrain.${domain}/api/list/${id}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (Array.isArray(data.files) && data.files.length > 0) {
-              return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+              return `https://pixeldrain.${domain}/api/file/${data.files[0].id}`;
           }
       } catch (err) {
           console.error("Błąd pobierania listy pixeldrain:", err);
@@ -217,17 +251,30 @@ function App() {
         
         <div className="flex-1 bg-black relative w-full h-full overflow-hidden">
           {url ? (
-            <ReactPlayer 
-                ref={playerRef} 
-                url={url} 
-                playing={isPlaying} 
-                controls={true} 
-                width="100%" height="100%"
-                style={{ position: 'absolute', top: 0, left: 0 }} 
-                onPlay={handlePlay} 
-                onPause={handlePause} 
-                config={{ file: { forceVideo: true } }}
-            />
+            isPixeldrainUrl(url) ? (
+              <PixeldrainPlayer
+                  ref={playerRef}
+                  url={url}
+                  playing={isPlaying}
+                  controls={true}
+                  width="100%" height="100%"
+                  style={{ position: 'absolute', top: 0, left: 0 }}
+                  onPlay={handlePlay}
+                  onPause={handlePause}
+              />
+            ) : (
+              <ReactPlayer 
+                  ref={playerRef} 
+                  url={url} 
+                  playing={isPlaying} 
+                  controls={true} 
+                  width="100%" height="100%"
+                  style={{ position: 'absolute', top: 0, left: 0 }} 
+                  onPlay={handlePlay} 
+                  onPause={handlePause} 
+                  config={{ file: { forceVideo: true } }}
+              />
+            )
           ) : (
             <div className="flex w-full h-full items-center justify-center flex-col text-gray-500">
                 <span className="text-4xl mb-2">⬆️</span>
