@@ -5,6 +5,13 @@ import io from 'socket.io-client';
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
+const normalizePixeldrainUrl = (url) => {
+  if (/^pixeldrain\.(com|net)\//i.test(url)) {
+    return 'https://' + url;
+  }
+  return url;
+};
+
 const isPixeldrainUrl = (url) => /^https?:\/\/pixeldrain\.(com|net)\/api\/file\//.test(url);
 
 const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, style, onPlay, onPause }, ref) => {
@@ -110,10 +117,10 @@ function App() {
 
   useEffect(() => {
     socket.on('sync_state', (state) => {
-      if (state.currentUrl) setUrl(state.currentUrl);
+      if (state.currentUrl) setUrl(normalizePixeldrainUrl(state.currentUrl));
       setIsPlaying(state.isPlaying);
     });
-    socket.on('sync_url', (newUrl) => { setUrl(newUrl); setIsPlaying(true); });
+    socket.on('sync_url', (newUrl) => { setUrl(normalizePixeldrainUrl(newUrl)); setIsPlaying(true); });
     socket.on('sync_play', (time) => { 
         isRemoteUpdate.current = true; setIsPlaying(true); 
         if (playerRef.current && Math.abs(playerRef.current.getCurrentTime() - time) > 0.5) playerRef.current.seekTo(time, 'seconds');
@@ -152,6 +159,8 @@ function App() {
   };
 
   const convertPixeldrainUrl = async (inputUrl) => {
+      // Normalize: add https:// if the URL starts with pixeldrain without a protocol
+      inputUrl = normalizePixeldrainUrl(inputUrl);
       // Handle direct API URLs like https://pixeldrain.net/api/file/ID or https://pixeldrain.net/api/list/ID
       const apiMatch = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/api\/(file|list)\/([a-zA-Z0-9]+)/);
       if (apiMatch) {
