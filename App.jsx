@@ -7,12 +7,14 @@ const socket = io(SOCKET_URL);
 
 const normalizePixeldrainUrl = (url) => {
   if (/^pixeldrain\.(com|net)\//i.test(url)) {
-    return 'https://' + url;
+    url = 'https://' + url;
   }
+  // Always use pixeldrain.com (pixeldrain.net returns 403 Forbidden)
+  url = url.replace(/^(https?:\/\/)pixeldrain\.net\//i, '$1pixeldrain.com/');
   return url;
 };
 
-const isPixeldrainUrl = (url) => /^https?:\/\/pixeldrain\.(com|net)\/api\/file\//.test(url);
+const isPixeldrainUrl = (url) => /^https?:\/\/pixeldrain\.com\/api\/file\//.test(url);
 
 const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, style, onPlay, onPause }, ref) => {
   const videoRef = useRef(null);
@@ -41,7 +43,6 @@ const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, st
     <video
       ref={videoRef}
       controls={controls}
-      crossOrigin="anonymous"
       style={{ ...style, width: width || '100%', height: height || '100%', objectFit: 'contain' }}
       onPlay={onPlay}
       onPause={onPause}
@@ -168,22 +169,22 @@ function App() {
   };
 
   const convertPixeldrainUrl = async (inputUrl) => {
-      // Normalize: add https:// if the URL starts with pixeldrain without a protocol
+      // Normalize: add https:// if needed and convert .net to .com
       inputUrl = normalizePixeldrainUrl(inputUrl);
-      // Handle direct API URLs like https://pixeldrain.net/api/file/ID or https://pixeldrain.net/api/list/ID
-      const apiMatch = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/api\/(file|list)\/([a-zA-Z0-9]+)/);
+      // Handle direct API URLs like https://pixeldrain.com/api/file/ID or https://pixeldrain.com/api/list/ID
+      const apiMatch = inputUrl.match(/^https?:\/\/pixeldrain\.com\/api\/(file|list)\/([a-zA-Z0-9]+)/);
       if (apiMatch) {
-          const [, domain, apiType, id] = apiMatch;
+          const [, apiType, id] = apiMatch;
           if (apiType === 'file') {
-              return `https://pixeldrain.${domain}/api/file/${id}`;
+              return `https://pixeldrain.com/api/file/${id}`;
           }
           // apiType === 'list'
           try {
-              const res = await fetch(`https://pixeldrain.${domain}/api/list/${id}`);
+              const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const data = await res.json();
               if (Array.isArray(data.files) && data.files.length > 0) {
-                  return `https://pixeldrain.${domain}/api/file/${data.files[0].id}`;
+                  return `https://pixeldrain.com/api/file/${data.files[0].id}`;
               }
           } catch (err) {
               console.error("Błąd pobierania listy pixeldrain:", err);
@@ -191,22 +192,22 @@ function App() {
           return inputUrl;
       }
 
-      const match = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/(u|l)\/([a-zA-Z0-9]+)/);
+      const match = inputUrl.match(/^https?:\/\/pixeldrain\.com\/(u|l)\/([a-zA-Z0-9]+)/);
       if (!match) return inputUrl;
 
-      const [, domain, type, id] = match;
+      const [, type, id] = match;
 
       if (type === 'u') {
-          return `https://pixeldrain.${domain}/api/file/${id}`;
+          return `https://pixeldrain.com/api/file/${id}`;
       }
 
       // type === 'l' — fetch list and get first file
       try {
-          const res = await fetch(`https://pixeldrain.${domain}/api/list/${id}`);
+          const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (Array.isArray(data.files) && data.files.length > 0) {
-              return `https://pixeldrain.${domain}/api/file/${data.files[0].id}`;
+              return `https://pixeldrain.com/api/file/${data.files[0].id}`;
           }
       } catch (err) {
           console.error("Błąd pobierania listy pixeldrain:", err);
