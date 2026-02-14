@@ -5,16 +5,24 @@ import io from 'socket.io-client';
 const SOCKET_URL = 'https://aleanimiec-backend.onrender.com';
 const socket = io(SOCKET_URL);
 
+const toPixeldrainProxyUrl = (id) => `${SOCKET_URL}/api/proxy/pixeldrain/${id}`;
+
 const normalizePixeldrainUrl = (url) => {
   if (/^pixeldrain\.(com|net)\//i.test(url)) {
     url = 'https://' + url;
   }
-  // Always use pixeldrain.com (pixeldrain.net returns 403 Forbidden)
+  // Normalize .net to .com for consistent matching
   url = url.replace(/^(https?:\/\/)pixeldrain\.net\//i, '$1pixeldrain.com/');
+  // Convert direct pixeldrain API file URLs to proxy URLs
+  const fileMatch = url.match(/^https?:\/\/pixeldrain\.com\/api\/file\/([a-zA-Z0-9]+)/);
+  if (fileMatch) {
+    return toPixeldrainProxyUrl(fileMatch[1]);
+  }
   return url;
 };
 
-const isPixeldrainUrl = (url) => /^https?:\/\/pixeldrain\.com\/api\/file\//.test(url);
+const isPixeldrainUrl = (url) =>
+  url.startsWith(`${SOCKET_URL}/api/proxy/pixeldrain/`);
 
 const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, style, onPlay, onPause }, ref) => {
   const videoRef = useRef(null);
@@ -176,20 +184,20 @@ function App() {
       if (apiMatch) {
           const [, apiType, id] = apiMatch;
           if (apiType === 'file') {
-              return `https://pixeldrain.com/api/file/${id}`;
+              return toPixeldrainProxyUrl(id);
           }
           // apiType === 'list'
           try {
-              const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+              const res = await fetch(`${SOCKET_URL}/api/proxy/pixeldrain/${id}?list=true`);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const data = await res.json();
               if (Array.isArray(data.files) && data.files.length > 0) {
-                  return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+                  return toPixeldrainProxyUrl(data.files[0].id);
               }
           } catch (err) {
               console.error("Błąd pobierania listy pixeldrain:", err);
           }
-          return inputUrl;
+          return toPixeldrainProxyUrl(id);
       }
 
       const match = inputUrl.match(/^https?:\/\/pixeldrain\.com\/(u|l)\/([a-zA-Z0-9]+)/);
@@ -198,16 +206,16 @@ function App() {
       const [, type, id] = match;
 
       if (type === 'u') {
-          return `https://pixeldrain.com/api/file/${id}`;
+          return toPixeldrainProxyUrl(id);
       }
 
       // type === 'l' — fetch list and get first file
       try {
-          const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+          const res = await fetch(`${SOCKET_URL}/api/proxy/pixeldrain/${id}?list=true`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           if (Array.isArray(data.files) && data.files.length > 0) {
-              return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+              return toPixeldrainProxyUrl(data.files[0].id);
           }
       } catch (err) {
           console.error("Błąd pobierania listy pixeldrain:", err);
