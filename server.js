@@ -28,7 +28,7 @@ app.get('/keep-alive', (req, res) => {
 // --- PROXY PIXELDRAIN ---
 app.get('/api/proxy/pixeldrain/:fileId', async (req, res) => {
   const { fileId } = req.params;
-  if (!/^[a-zA-Z0-9]+$/.test(fileId)) {
+  if (!/^[a-zA-Z0-9]{1,50}$/.test(fileId)) {
     return res.status(400).send('Invalid file ID');
   }
   try {
@@ -46,7 +46,10 @@ app.get('/api/proxy/pixeldrain/:fileId', async (req, res) => {
     if (response.headers['content-length']) {
       res.set('Content-Length', response.headers['content-length']);
     }
-    res.set('Accept-Ranges', 'bytes');
+    if (response.headers['accept-ranges']) {
+      res.set('Accept-Ranges', response.headers['accept-ranges']);
+    }
+    response.data.on('error', (err) => { console.error('Stream error:', err); res.end(); });
     response.data.pipe(res);
   } catch (err) {
     console.error('Pixeldrain proxy error:', err.message);
