@@ -23,6 +23,12 @@ const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, st
   }));
 
   useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load();
+    }
+  }, [url]);
+
+  useEffect(() => {
     if (!videoRef.current) return;
     if (playing) {
       videoRef.current.play().catch((err) => console.warn('Autoplay failed:', err));
@@ -34,13 +40,16 @@ const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, st
   return (
     <video
       ref={videoRef}
-      src={url}
       controls={controls}
+      crossOrigin="anonymous"
       style={{ ...style, width: width || '100%', height: height || '100%', objectFit: 'contain' }}
       onPlay={onPlay}
       onPause={onPause}
       preload="auto"
-    />
+    >
+      <source src={url} type="video/mp4" />
+      <source src={url} type="video/webm" />
+    </video>
   );
 });
 
