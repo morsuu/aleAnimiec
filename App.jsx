@@ -118,6 +118,27 @@ function App() {
   };
 
   const convertPixeldrainUrl = async (inputUrl) => {
+      // Handle direct API URLs like https://pixeldrain.net/api/file/ID or https://pixeldrain.net/api/list/ID
+      const apiMatch = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/api\/(file|list)\/([a-zA-Z0-9]+)/);
+      if (apiMatch) {
+          const [, , apiType, id] = apiMatch;
+          if (apiType === 'file') {
+              return `https://pixeldrain.com/api/file/${id}`;
+          }
+          // apiType === 'list'
+          try {
+              const res = await fetch(`https://pixeldrain.com/api/list/${id}`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              if (Array.isArray(data.files) && data.files.length > 0) {
+                  return `https://pixeldrain.com/api/file/${data.files[0].id}`;
+              }
+          } catch (err) {
+              console.error("Błąd pobierania listy pixeldrain:", err);
+          }
+          return inputUrl;
+      }
+
       const match = inputUrl.match(/^https?:\/\/pixeldrain\.(com|net)\/(u|l)\/([a-zA-Z0-9]+)/);
       if (!match) return inputUrl;
 
