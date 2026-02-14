@@ -18,7 +18,7 @@ const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, st
   useEffect(() => {
     if (!videoRef.current) return;
     if (playing) {
-      videoRef.current.play().catch(() => {});
+      videoRef.current.play().catch((err) => console.warn('Autoplay failed:', err));
     } else {
       videoRef.current.pause();
     }
@@ -36,6 +36,8 @@ const PixeldrainPlayer = forwardRef(({ url, playing, controls, width, height, st
     />
   );
 });
+
+PixeldrainPlayer.displayName = 'PixeldrainPlayer';
 
 function App() {
   const [url, setUrl] = useState('');
